@@ -12,6 +12,31 @@
     setTimeout(() => p.remove(), ms);
   };
 
+  // ---------- shared date helpers ----------
+  // Koi bhi common format: mm/dd/yyyy (slash ke liye default), Mon dd, yyyy, dd-Mon-yyyy, yyyy-mm-dd
+  const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const fixY = (y) => (y < 100 ? y + 2000 : y);
+  const findDate = (str) => {
+    str = String(str || "");
+    let m;
+    if ((m = str.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))) return { y: +m[1], m: +m[2], d: +m[3] };
+    if ((m = str.match(/(\d{1,2})[-\/. ]([A-Za-z]{3,9})[-\/. ,]*(\d{2,4})/)) && MON[m[2].slice(0, 3).toLowerCase()])
+      return { y: fixY(+m[3]), m: MON[m[2].slice(0, 3).toLowerCase()], d: +m[1] };
+    if ((m = str.match(/([A-Za-z]{3,9})[ .-]+(\d{1,2}),?[ .-]+(\d{4})/)) && MON[m[1].slice(0, 3).toLowerCase()])
+      return { y: +m[3], m: MON[m[1].slice(0, 3).toLowerCase()], d: +m[2] };
+    if ((m = str.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/))) {
+      // slash format = mm/dd/yyyy (10/04/2026 => 4 Oct 2026)
+      let mo = +m[1], d = +m[2];
+      if (mo > 12 && d <= 12) { let t = d; d = mo; mo = t; }
+      return { y: fixY(+m[3]), m: mo, d: d };
+    }
+    return null;
+  };
+  const dKey = (o) => o.y + "-" + o.m + "-" + o.d;
+  const dNum = (o) => Date.UTC(o.y, o.m - 1, o.d);
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const toMDY = (o) => pad2(o.m) + "/" + pad2(o.d) + "/" + o.y;
+
   ["avcLaunchWrap", "avcPanel", "cpPanel"].forEach(id => document.getElementById(id)?.remove());
 
   let wrap = document.createElement("div");
@@ -54,6 +79,7 @@
       '<button id="cpEx" style="background:#217346;color:#fff;padding:10px 14px;border:none;border-radius:8px;margin:8px;cursor:pointer;font-size:14px;">Export to Excel</button>' +
       '<div style="margin-top:15px;"><div id="cpProgressText" style="font-size:14px;margin-bottom:5px;">Progress: 0%</div>' +
       '<div style="width:100%;height:10px;background:#eee;border-radius:10px;overflow:hidden;"><div id="cpProgressBar" style="height:100%;width:0%;background:#1565c0;"></div></div></div>' +
+      '<div id="cpStatus" style="display:none;margin-top:15px;padding:12px 14px;border-radius:10px;background:#f3f6fb;border:1px solid #c9d6ea;text-align:left;font-size:14px;line-height:1.7;"></div>' +
       '<div style="text-align:left;position:relative;margin-top:20px;height:32px;"><button id="cpClose" style="background:maroon;color:#fff;padding:7px 14px;border:none;border-radius:8px;cursor:pointer;position:absolute;top:0;left:0;">Close</button></div>';
     document.body.appendChild(c);
 
@@ -68,6 +94,7 @@
     const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
     $("cpClose").onclick = () => c.remove();
+    const showStatus = (html) => { let el = $("cpStatus"); el.innerHTML = html; el.style.display = html ? "block" : "none"; };
 
     // ---------- background postback (page reload ke baghair, panel bacha rehta hai) ----------
     const postForm = async (eventTarget, isGet) => {
@@ -117,27 +144,7 @@
       .catch(err => setProgress(0, "Client auto-select fail: " + err.message));
 
     // ---------- helpers ----------
-    const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-    const fixY = (y) => (y < 100 ? y + 2000 : y);
-    // koi bhi common date format: yyyy-mm-dd, dd-Mon-yyyy, Mon dd, yyyy, mm/dd/yyyy
-    const findDate = (str) => {
-      str = String(str || "");
-      let m;
-      if ((m = str.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))) return { y: +m[1], m: +m[2], d: +m[3] };
-      if ((m = str.match(/(\d{1,2})[-\/. ]([A-Za-z]{3,9})[-\/. ,]*(\d{2,4})/)) && MON[m[2].slice(0, 3).toLowerCase()])
-        return { y: fixY(+m[3]), m: MON[m[2].slice(0, 3).toLowerCase()], d: +m[1] };
-      if ((m = str.match(/([A-Za-z]{3,9})[ .-]+(\d{1,2}),?[ .-]+(\d{4})/)) && MON[m[1].slice(0, 3).toLowerCase()])
-        return { y: +m[3], m: MON[m[1].slice(0, 3).toLowerCase()], d: +m[2] };
-      if ((m = str.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/))) {
-        // slash format = mm/dd/yyyy (10/04/2026 => 4 Oct 2026)
-        let mo = +m[1], d = +m[2];
-        if (mo > 12 && d <= 12) { let t = d; d = mo; mo = t; }
-        return { y: fixY(+m[3]), m: mo, d: d };
-      }
-      return null;
-    };
-    const dKey = (o) => o.y + "-" + o.m + "-" + o.d;
-    const dNum = (o) => Date.UTC(o.y, o.m - 1, o.d);
+    // date helpers (findDate, dKey, dNum) upar shared hain
     const isCP = (t) => /^(9|cpl?|compensatory(\s+leave)?)$/i.test(String(t).trim());
 
     const parseLine = (line, delim) => {
@@ -215,8 +222,9 @@
     $("cpUp").onchange = async (e) => {
       let input = e.target, f = input.files[0];
       if (!f) return;
-      const fail = (msg) => { alert("❌ " + msg); setProgress(0, "Progress: 0%"); input.value = ""; };
+      const fail = (msg) => { alert("❌ " + msg); setProgress(0, "Progress: 0%"); showStatus(""); input.value = ""; };
       try {
+        showStatus("");
         setProgress(5, "Reading file...");
         setProgress(3, "Client select ho raha hai...");
         await clientReady;
@@ -282,12 +290,13 @@
         // avc = AVC upload file (ticked CP rows + baqi leave types as-is)
         // rej = CP Rejection file (CP rows jo table mein nahi mili / tick nahi hui)
         let avc = [], rej = [], done = 0;
+        const normDate = (v) => { let o = findDate(v); return o ? toMDY(o) : v; }; // AVC file hamesha mm/dd/yyyy
         const dKey2 = (it) => it.id + "|" + dKey(it.otDate);
         for (let k = 0; k < items.length; k++) {
           let it = items[k];
           if (!isCP(it.type)) {
             // 9 / CP ke ilawa: CP balance tick nahi hoga, lekin AVC upload file mein jayegi
-            avc.push([it.id, it.leave, it.type, it.ot]);
+            avc.push([it.id, normDate(it.leave), it.type, it.ot]);
           } else if (!it.otDate) {
             rej.push([it.id, it.type, it.leave, it.ot, "OT Date missing / invalid"]);
           } else {
@@ -295,19 +304,30 @@
             if (!cb) rej.push([it.id, it.type, it.leave, it.ot, posted[dKey2(it)] ? "Already posted (Delete likha hai) - selection nahi hui" : "Not Found in table (ID + OT Date)"]);
             else {
               if (!cb.checked) cb.click();
-              if (cb.checked) { done++; avc.push([it.id, it.leave, "9", it.ot]); }
+              if (cb.checked) { done++; avc.push([it.id, normDate(it.leave), "9", it.ot]); }
               else rej.push([it.id, it.type, it.leave, it.ot, "Could not tick"]);
             }
           }
           if (k % 25 === 0) { setProgress(50 + Math.floor((k / items.length) * 50), "Ticking " + (k + 1) + " / " + items.length); await tick(); }
         }
 
-        setProgress(100, "Completed ✔ - " + done + " ticked / " + items.length + " rows | Rejected: " + rej.length);
+        let cpTotal = items.filter(i => isCP(i.type)).length;
+        let others = items.length - cpTotal;
+        setProgress(100, "Completed ✔");
+        showStatus(
+          '<b>Total CP rows:</b> ' + cpTotal + '<br>' +
+          '<span style="color:#217346;"><b>✔ Checked successfully:</b> ' + done + '</span><br>' +
+          '<span style="color:' + (rej.length ? 'maroon' : '#217346') + ';"><b>✖ Rejected:</b> ' + rej.length + '</span>' +
+          (others ? '<br><b>Other leave types (no tick needed):</b> ' + others : '') +
+          '<hr style="margin:8px 0;border:0;border-top:1px solid #c9d6ea;">' +
+          (avc.length ? '📄 AVC_Upload.csv download ho gayi (' + avc.length + ' rows)' : 'AVC_Upload.csv nahi bani (koi row nahi)') + '<br>' +
+          (rej.length ? '📄 CP_Balance_Rejection.csv download ho gayi (' + rej.length + ' rows)' : '✅ Koi rejection nahi - rejection file download nahi hui')
+        );
 
-        // 2 files auto download
-        downloadCsv("AVC_Upload.csv", "Emp ID,Attendance Date,Leave Type,Remarks", avc);
-        await wait(800);
-        downloadCsv("CP_Balance_Rejection.csv", "Emp ID,Leave Type,Leave Date,OT Date/Remarks,Rejection Reason", rej);
+        // khali file kabhi download nahi hogi
+        if (avc.length) downloadCsv("AVC_Upload.csv", "Emp ID,Attendance Date,Leave Type,Remarks", avc);
+        if (avc.length && rej.length) await wait(800);
+        if (rej.length) downloadCsv("CP_Balance_Rejection.csv", "Emp ID,Leave Type,Leave Date,OT Date/Remarks,Rejection Reason", rej);
       } catch (err) {
         fail("Error: " + (err && err.message ? err.message : err));
       }
@@ -436,18 +456,31 @@
     });
   };
 
-  // Date string -> day number (dd/mm/yyyy, dd-mm-yyyy, dd-Mon-yyyy, yyyy-mm-dd)
-  const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  // Date string -> day number (mm/dd/yyyy, Mon dd, yyyy, dd-Mon-yyyy, yyyy-mm-dd)
   const parseDay = (str) => {
-    let m = String(str).trim().match(/^(\d{1,4})[\/\-\.\s]([A-Za-z]{3,}|\d{1,2})[\/\-\.\s](\d{2,4})/);
-    if (!m) return null;
-    let d, mo, y;
-    if (m[1].length === 4) { y = +m[1]; mo = m[2]; d = +m[3]; }
-    else { d = +m[1]; mo = m[2]; y = +m[3]; }
-    mo = /^\d+$/.test(mo) ? +mo : MONTHS[mo.slice(0, 3).toLowerCase()];
-    if (!mo) return null;
-    if (y < 100) y += 2000;
-    return Math.round(Date.UTC(y, mo - 1, d) / 86400000);
+    let o = findDate(str);
+    return o ? Math.round(dNum(o) / 86400000) : null;
+  };
+
+  // Row dhoondo: ID + Date. File mein 10/26/2026, table mein "Oct 26, 2026" - dono barabar maane jayenge
+  const findRow = (id, date) => {
+    id = id.trim();
+    let want = findDate(date);
+    let rows = [...document.querySelectorAll("table tbody tr")];
+    const cellTexts = (row) => [...row.cells].map(c => c.innerText.replace(/\s+/g, " ").trim());
+    const dateOk = (row, texts) => {
+      if (!want) return texts.join(" ").includes(date.trim());
+      return texts.some((t, k) => {
+        if (!t || t.length > 40 || row.cells[k].querySelector("select,input")) return false;
+        let d = findDate(t);
+        return d && dKey(d) === dKey(want);
+      });
+    };
+    // 1) ID exact cell match + date match
+    let hit = rows.find(row => { let t = cellTexts(row); return t.some(x => x === id) && dateOk(row, t); });
+    if (hit) return hit;
+    // 2) fallback: row text mein ID include
+    return rows.find(row => { let t = cellTexts(row); return t.join(" ").includes(id) && dateOk(row, t); });
   };
 
   const MAX_CONSECUTIVE_CASUAL = 2;
@@ -496,7 +529,8 @@
       (function next() {
         if (i >= total) {
           window.alert = origAlert;
-          progressText.innerText = "Completed ✔";
+          let okN = report.filter(r => r[4] === "Ready to Post").length;
+          progressText.innerText = "Completed ✔ - Ready to Post: " + okN + " | Not posted / Not found: " + (report.length - okN);
           progressBar.style.width = "100%";
           downloadReport(report);
           return;
@@ -521,10 +555,7 @@
         search.dispatchEvent(new Event("input"));
 
         setTimeout(() => {
-          let target = [...document.querySelectorAll("table tbody tr")].find(row => {
-            let t = row.innerText.replace(/\s+/g, " ").trim();
-            return t.includes(id.trim()) && t.includes(date.trim());
-          });
+          let target = findRow(id, date);
 
           let typeName = free ? FREE_CODES[code] : LABEL[type];
 
